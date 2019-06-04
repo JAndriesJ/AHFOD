@@ -51,7 +51,7 @@ classdef ParaAndData
             obj.Data.MinHighEntrIntvLen = MinHiEntrPARA*fs;
             obj.Data.minEventTime       = minETPARA*fs;
             obj.Data.sigDurTime         = sigdur;
-            obj.Data.timeInterval       = [1, min([durFrac*sigdur, durBaseline])];
+            obj.Data.timeInterval       = [1, durBaseline];
             obj.Data.nbChannels         = nbChan;
             obj.Data.nbSamples          = nbSamples;
         end

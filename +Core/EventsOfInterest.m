@@ -149,6 +149,7 @@ classdef EventsOfInterest
            PeaksCount        = hfo.Para.PeaksCount ;
            maxAmplFilt       = hfo.Para.maxAmplitudeFiltered;
            MinIEveGap        = hfo.Para.MinInterEventDist;
+           durThr            = hfo.Para.durThr;
            
            SampFreq          = hfo.Data.sampFreq;
            MinIEveDur        = hfo.Data.minEventTime;
@@ -158,7 +159,7 @@ classdef EventsOfInterest
            
            blThr             = hfo.baseline.baselineThr(channel);
            filtBlThr         = hfo.baseline.FiltbaselineThr(channel);
-
+           
 
            [env, shiftEnv] = Core.EventsOfInterest.shiftEvelope(env);
    
@@ -166,14 +167,14 @@ classdef EventsOfInterest
              [Event_len, Event_start, Event_end] = ...
                  Core.EventsOfInterest.findMorphologyEventInd(...
                  env, shiftEnv, blThr, filtBlThr, filtSignal, PeaksCount,...
-                 maxAmplFilt, MinIEveGap, MinIEveDur );
+                 maxAmplFilt, MinIEveGap, MinIEveDur, durThr );
            end
            
            if isequal(RefType,'spec') 
                [Event_len, Event_start, Event_end] = ...
                    Core.EventsOfInterest.findSpectrumEventInd(...
                    env, shiftEnv, blThr, filtSignal, PeaksCount,...
-                   SampFreq, EventThrHighPARA, EventThrLowPARA);
+                   SampFreq, EventThrHighPARA, EventThrLowPARA, durThr);
            end
            
         end
@@ -192,13 +193,13 @@ classdef EventsOfInterest
                
 %% Morphology 
         function [Event_len, Event_start, Event_end] = ...
-                findMorphologyEventInd(env, shift_env, blThr, filtBlThr, filtSignal, minOsci,  maxAmplFilt, MinIEveGap, MinIEveDur)
-   
+                findMorphologyEventInd(env, shift_env, blThr, filtBlThr, filtSignal, minOsci,  maxAmplFilt, MinIEveGap, MinIEveDur, durThr)
+            
             [~, Event_start, Event_end] = ...
-               Core.EventsOfInterest.findEventInd(env, shift_env, blThr);
+               Core.EventsOfInterest.findEventInd(env, shift_env, blThr, durThr);
             
             [Event_len, Event_start, Event_end] = ...
-                Core.EventsOfInterest.SmallAmpEvents(MinIEveDur, maxAmplFilt, Event_start, Event_end, env, shift_env, blThr);
+                Core.EventsOfInterest.SmallAmpEvents(MinIEveDur, maxAmplFilt, Event_start, Event_end, env, shift_env, blThr, 1);
             
             [Event_len, Event_start, Event_end] = ...
                 Core.EventsOfInterest.checkOscillations(minOsci, Event_start, Event_end, Event_len, filtSignal, filtBlThr);
@@ -208,37 +209,43 @@ classdef EventsOfInterest
         end
         
         function [Event_len, Event_start, Event_end] = ...
-            SmallAmpEvents(MinIEveDur, maxAmplFilt, Event_start, Event_end, env, shift_env, blThr)
-        
-        durThr = 0.99;
+            SmallAmpEvents(MinIEveDur, maxAmplFilt, Event_start, Event_end, env, shift_env, blThr, durThr)
 
         SEnvBelow = (shift_env <  (blThr*durThr));
         EnvAbove  = (env       >= (blThr*durThr));
-        EnvBelow  = (env       <= (blThr*durThr));
-        SEnvAbove = (shift_env >  (blThr*durThr));
+        EnvBelow  = (env       < (blThr*durThr));
+        SEnvAbove = (shift_env >=  (blThr*durThr));
         
         Crossings1 = find( SEnvBelow & EnvAbove);    % find zero crossings rising
         Crossings2 = find( SEnvAbove & EnvBelow);    % find zero crossings falling
         
-        nbEvents = numel(Event_start);
+        nbEvents = numel(Crossings1);
         CandidateInterval = nan(nbEvents,2);
         count = 0;
         for iEvent = 1:nbEvents
             % check for time threshold duration, all times are in pt
-            EventStart = Event_start(iEvent);
-            EventEnd = Event_end(iEvent);
+            EventStart = Crossings1(iEvent);
+            EventEnd = Crossings2(iEvent);
+            
             eventBigEnough = ((EventEnd - EventStart) >= MinIEveDur);
             
             if eventBigEnough
-                StartInd = (Crossings1 <= EventStart);
-                StartEnd = (Crossings2 >= EventStart);
+                StartInd = (Event_start <= Crossings1(iEvent));
+                StartEnd = (Event_end >= Crossings1(iEvent));
                 
                 k = find(StartInd & StartEnd); % find the starting and end points of envelope
                 
-                [MaxAmplitude ,ArgMaxAmplitude] = max(env(Crossings1(k) : Crossings2(k)));
+                [MaxAmplitude , ~ ] = max(env(Event_start(k) : Event_end(k)));
                 if MaxAmplitude <= maxAmplFilt
                     count = count + 1 ;
-                    CandidateInterval(count,:) = [Crossings1(k), Crossings2(k)];
+                    if (Event_end(k) <= length(env)) && ~(Event_start(k) > 0)
+                        CandidateInterval(count,:) = [Event_start(k), length(env)];
+                    elseif  (Event_start(k) > 0) && ~(Event_end(k) <= length(env))
+                        CandidateInterval(count,:) = [1, Event_end(k)];
+                    else
+                        CandidateInterval(count,:) = [Event_start(k), Event_end(k)];
+                    end
+                    
                 end
             end
             
@@ -338,9 +345,10 @@ classdef EventsOfInterest
               
 %% Spectrum
         function [Event_len, Event_start, Event_end] = ...
-                findSpectrumEventInd(env, shift_env, blThr, filtSignal, PeaksCount, Frequency, TrigThrHighPARA, TrigThrLowPARA)
+                findSpectrumEventInd(env, shift_env, blThr, filtSignal, PeaksCount, Frequency, TrigThrHighPARA, TrigThrLowPARA, durThr)
+            
             [Event_len, Event_start, Event_end] = ...
-               Core.EventsOfInterest.findEventInd(env, shift_env, blThr);
+               Core.EventsOfInterest.findEventInd(env, shift_env, blThr, durThr);
            
             [Event_len, Event_start, Event_end] = ...
                 Core.EventsOfInterest.trimLongShortEvents(Frequency, TrigThrHighPARA, TrigThrLowPARA, Event_len, Event_start, Event_end);
@@ -398,10 +406,11 @@ classdef EventsOfInterest
         
 %% Both
         % returns start and end of events
-        function [Event_len, Event_start, Event_end] = findEventInd(env, shift_env, blThr)
-            isSEnvLess = (shift_env <  blThr);
+        function [Event_len, Event_start, Event_end] = findEventInd(env, shift_env, blThr, durTHr)
+            
+            isSEnvLess = (shift_env <  blThr*durTHr);
             isSEnvMore = ~isSEnvLess ;
-            isEnvLess = (env < blThr);
+            isEnvLess = (env < blThr*durTHr);
             isEnvMore = ~isEnvLess;
 
             trig_start_condition = (isSEnvLess & isEnvMore);

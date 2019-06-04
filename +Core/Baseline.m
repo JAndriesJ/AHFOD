@@ -33,7 +33,8 @@ classdef Baseline
             obj.Output.baselineThr = nan(1,nbChannels);
             for iChan = 1 : nbChannels
                 EnvelopeCHAN = Envelope(:,iChan);
-               
+                FiltSigCHAN  = FiltSig(:,iChan);
+                
                 IndBaseline = Core.Baseline.getIndBaseline(Hfo, maxNoise(iChan), iChan);
                 [BaselineStr, BaselineLen, BaselineEnd] = Core.Baseline.getBaselineIndCHAN(IndBaseline);
                 
@@ -47,7 +48,7 @@ classdef Baseline
                 baselineValsCHAN = Core.Baseline.getBaselineCHAN(IndBaseline, EnvelopeCHAN);
                 baselineThr      = Core.Baseline.getBaslineThresholdCHAN(baselineValsCHAN, IndBaseline, cdfLev);
                 
-                FilltBaselineValsCHAN = Core.Baseline.getBaselineCHAN(IndBaseline, FiltSig);
+                FilltBaselineValsCHAN = Core.Baseline.getBaselineCHAN(IndBaseline, FiltSigCHAN);
                 filtBaselineThr  = Core.Baseline.getBaslineThresholdCHAN(FilltBaselineValsCHAN, IndBaseline, filtCdfLev);
                 
 %                 obj.Output.baselineValues{iChan}        = baselineValsCHAN;
@@ -89,7 +90,13 @@ classdef Baseline
                 indAboveEntrThr           = Core.Baseline.getIndAboveEntrThr(MaxEntPARA, maxEntropy, freqEntropy);
                 indAboveEntrThr           = Core.Baseline.trimIndBorder(SampFreq,IndecesTrim, indAboveEntrThr);
                 indBrake                  = Core.Baseline.getIndBrake(SampFreq, IndecesTrim, indAboveEntrThr);
-                indHighEntr               = Core.Baseline.getIndHighEntr(maxNoise, SampFreq, MinHEIvLen, filtSignal, chan, indAboveEntrThr, indBrake, timeSeg);
+                
+                if isnan(indBrake)
+                    warning('asdfas')
+                    indHighEntr = [];
+                else
+                    indHighEntr = Core.Baseline.getIndHighEntr(maxNoise, SampFreq, MinHEIvLen, filtSignal, chan, indAboveEntrThr, indBrake, timeSeg);
+                end
                 
                 cellOfIndHighEnt{stepCount} = indHighEntr;
                 stepCount = 1 + stepCount;
@@ -99,15 +106,18 @@ classdef Baseline
 
         % returns a segments of the whole signal
         function signalSeg = getSignalSeg(sampFreq, signal, timeSeg, Channel)
-            
             if min(size(signal)) == 1
                 SignalChan    =  signal;
             else
                 SignalChan    = signal(:,Channel);
             end
             
-            sampleSeg = (1+(timeSeg-1)*sampFreq) : (timeSeg*sampFreq);
-            signalSeg = SignalChan(sampleSeg);
+            sampleSegInd = (1+(timeSeg-1)*sampFreq) : (timeSeg*sampFreq);
+            try
+                signalSeg = SignalChan(sampleSegInd);
+            catch
+                signalSeg = SignalChan((1+(timeSeg-1)*sampFreq):length(SignalChan));   
+            end
         end
         
         % returns the stockwell transform of the signal segment.
@@ -135,7 +145,9 @@ classdef Baseline
         function indAboveThr = trimIndBorder(SampFreq, IndecesTrim, indAboveThr)
 
             if  isempty(indAboveThr)
-                error('No Indeces above threshold.')
+                warning('No Indeces above threshold.')
+                indAboveThr = [];
+                return
             end
             
             % dont take border points because of stockwell transf
@@ -156,7 +168,9 @@ classdef Baseline
             lowerTimeBorder = SampFreq*(1-IndecesTrim);
             
             if isempty(indAboveThr)
-                error('No Indeces above threshold.')
+                warning('No Indeces above threshold.')
+                indBrake = nan;
+                return
             end
             
             % check for the length

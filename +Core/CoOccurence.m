@@ -3,6 +3,7 @@ classdef CoOccurence
        Rhfo
        FRhfo
        ContThresh
+       maskCellMultiFR2R
        maskCellCoOccurence
        Events 
    end
@@ -16,6 +17,8 @@ classdef CoOccurence
            CoOc = CoOc.getCoOccurence;
            CoOc = CoOc.getCoOccuredEvents;
            Events = CoOc.Events;
+           Events.maskMultiFR2R = CoOc.maskCellMultiFR2R;
+           Events.countMultiFR2R = cellfun(@sum,CoOc.maskCellMultiFR2R);
        end
        
        function obj = loadHFO(obj, Rhfo, FRhfo)
@@ -33,6 +36,7 @@ classdef CoOccurence
            CoThr = obj.ContThresh;
            CoOccure = Core.CoOccurence.getRandFRCoOccurence(rhfo, frhfo, CoThr);
            
+           obj.maskCellMultiFR2R = CoOccure.maskMultiFR2R;
            obj.maskCellCoOccurence = CoOccure.maskContained;
        end
        
@@ -91,6 +95,7 @@ classdef CoOccurence
            
            nbChan       = length(EventIntervalBigCell);
            coOccurence.ContainmentCell = cell(1, nbChan);
+           coOccurence.maskMultiFR2R   = cell(1, nbChan);
            coOccurence.maskContained   = cell(1, nbChan);
            for iChan = 1:nbChan
                EventIntervalSmall = EventIntervalSmallCell{iChan};
@@ -108,10 +113,13 @@ classdef CoOccurence
                    end
                end
                coOccurence.ContainmentCell{iChan}  = ContainmentMat;
-               maskThress                          = (ContainmentMat >=  ContThresh);
+               maskThress                          = (ContainmentMat >  ContThresh);
+               coOccurence.maskMultiFR2R{iChan}    =  (sum(maskThress,2) > 1);
                coOccurence.maskContained{iChan}  = logical(sum(maskThress,1));
            end
        end
+       
+ 
        
    end  
 end
